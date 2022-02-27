@@ -1,0 +1,219 @@
+<html>
+<head>
+<title>Organizational Chart</title>
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<script src="scripts/jquery-3.2.1.min.js"></script>
+<script src="scripts/d3.v3.min.js"></script>
+<style>
+	.node circle {
+	  fill: #fff;
+	  stroke: steelblue;
+	  stroke-width: 3px;
+	}
+
+	.node text { font: 12px sans-serif; }
+
+	.link {
+	  fill: none;
+	  stroke: #ccc;
+	  stroke-width: 2px;
+	}
+</style>	
+</head>
+<body>
+    <script type="text/javascript">
+function getParameterByName(name, url) {
+    if (!url) url = window.location.href;
+    name = name.replace(/[\[\]]/g, "\\$&");
+    var regex = new RegExp("[?&]" + name + "(=([^&#]*)|&|#|$)"),
+        results = regex.exec(url);
+    if (!results) return null;
+    if (!results[2]) return '';
+    return decodeURIComponent(results[2].replace(/\+/g, " "));
+}
+
+	function post_cypherquery() {
+			
+			var qd = {};
+			if (location.search) location.search.substr(1).split("&").forEach(function(item) {
+				var s = item.split("="),
+					k = s[0],
+					v = s[1] && decodeURIComponent(s[1]); //  null-coalescing / short-circuit
+				//(k in qd) ? qd[k].push(v) : qd[k] = [v]
+				(qd[k] = qd[k] || []).push(v) // null-coalescing / short-circuit
+			})
+			var str_array = qd.Names[0].split(';');
+			emailstr = "'";
+			
+for(var i = 0; i < str_array.length; i++) {
+   // Trim the excess whitespace.
+   str_array[i] = str_array[i].replace(/<(.*?)>/, "").replace(/^\s*/, "").replace(/\s*$/, "");
+   if (i==0) {
+   emailstr +=  str_array[i] + "'"
+   } else {
+   emailstr += ",'" + str_array[i] + "'"};
+   
+}
+			var cypherq = "match (n:P6 {name:'Houten, Frans van'}) MATCH (p:P6) WHERE p.code1 IN ["+emailstr+"] MATCH path = allShortestPaths( (n)-[*]-(p) ) UNWIND nodes(path) AS r match (r)-[x:has_manager*1]->(pp) return distinct r.name as name, pp.name as parent, r.title, r.department, r.code1 ;";
+			// get the data from neo4j
+			$.ajax({
+                url: "http://localhost:7474/db/data/transaction/commit",
+                type: 'POST',
+                data: JSON.stringify({ "statements": [{ "statement": cypherq }] }),                
+                contentType: 'application/json',
+                accept: 'application/json; charset=UTF-8',
+                success: function () { },
+                error: function (jqXHR, textStatus, errorThrown) { $('#messageArea').html('<h3>' + textStatus + ' : ' + errorThrown + '</h3>') },
+                complete: function () { }
+			}).then(function (data) {
+
+				var htmlString = '[ ';
+				var teller = 0;
+				$.each(data.results[0].data, function (k, v) {
+					if (teller != 0) {
+						htmlString += ', '
+					}
+					var w2 = 'waarde';
+					if (v.row[0] == v.row[1]) { w2 = 'null' } else { w2 = v.row[1] }
+					var vtest = '';
+					if (str_array.indexOf(v.row[4]) !== -1) { vtest = 'yes' };
+
+					htmlString += '{ "name": "' + v.row[0] + '", "parent" : "' + w2 + '", "title" : "' + v.row[2] + '", "department" : "' + v.row[3] + '", "incl" : "' + vtest + '" }'; //'", "value": 10,"type": "black", "level": "red" }';
+					teller = teller + 1;
+				});
+				htmlString += ' ]';
+
+				var data1 = htmlString;
+				var data2 = JSON.parse(data1);
+
+				// create a name: node map
+				var dataMap = data2.reduce(function (map, node) {
+					map[node.name] = node;
+					return map;
+				}, {});
+
+				// create the tree array
+				var p = 1;
+				var c = 1;
+
+				var treeData = [];
+				data2.forEach(function (node) {
+					// add to parent
+					var parent = dataMap[node.parent];
+					if (parent) {
+						// create child array if it doesn't exist
+						if (parent.children) { c += 1; } else { p += 1; };
+						(parent.children || (parent.children = []))
+							// add node to child array
+							.push(node);
+					} else {
+						// parent is null or missing
+						treeData.push(node);
+					}
+				});
+
+
+				// ************** Generate the tree diagram	 *****************
+				var margin = { top: 20, right: 120, bottom: 20, left: 120 },
+					width = 3000 - margin.right - margin.left,
+					height = 300 + (c * 60) - margin.top - margin.bottom;
+				var i = 0;
+				var tree = d3.layout.tree()
+					.size([height, width]);
+
+				var diagonal = d3.svg.diagonal()
+					.projection(function (d) { return [d.y, d.x]; });
+
+				d3.select("svg").selectAll("*").remove();
+
+				var svg = d3.select("svg")
+					.attr("width", width + margin.right + margin.left)
+					.attr("height", height + margin.top + margin.bottom)
+					.append("g")
+					.attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+				root = treeData[0];
+				// Compute the new tree layout.
+				var nodes = tree.nodes(root).reverse(),
+					links = tree.links(nodes);
+
+				// Normalize for fixed-depth.
+				nodes.forEach(function (d) { d.y = d.depth * 260; });
+
+				// Declare the nodes…
+				var node = svg.selectAll("g.node")
+					.data(nodes, function (d) { return d.id || (d.id = ++i); });
+
+				// Enter the nodes.
+				var nodeEnter = node.enter().append("g")
+					.attr("class", "node")
+					.attr("transform", function (d) {
+						return "translate(" + d.y + "," + d.x + ")";
+					});
+
+				nodeEnter.append("circle")
+					.attr("r", 10)
+					.style("fill", "#fff");
+
+				nodeEnter.append("text")
+					.attr("x", function (d) {
+						return d.children || d._children ? -13 : 13;
+					})
+					.attr("dy", ".85em")
+					.attr("text-anchor", function (d) {
+						return d.children || d._children ? "end" : "start";
+					})
+					.html(function (d) { return d.name })
+					.style("fill-opacity", 1)
+
+					.style("font-weight", function (d) { return (d.incl == "yes") ? "bold" : "normal"});
+			
+
+  nodeEnter.append("text")
+	  .attr("x", function(d) { 
+		  return d.children || d._children ? -13 : 13; })
+	  .attr("dy", "1.9em")
+	  .attr("text-anchor", function(d) { 
+		  return d.children || d._children ? "end" : "start"; })
+	  .html(function(d) { return d.title  })
+	  .style("fill-opacity", 1);
+
+  nodeEnter.append("text")
+	  .attr("x", function(d) { 
+		  return d.children || d._children ? -13 : 13; })
+	  .attr("dy", "3em")
+	  .attr("text-anchor", function(d) { 
+		  return d.children || d._children ? "end" : "start"; })
+	  .html(function(d) { return d.department  })
+	  .style("fill-opacity", 1);
+
+	  
+  // Declare the links…
+  var link = svg.selectAll("path.link")
+	  .data(links, function(d) { return d.target.id; });
+
+  // Enter the links.
+  link.enter().insert("path", "g")
+	  .attr("class", "link")
+	  .attr("d", diagonal);
+			
+			});
+        };
+		
+post_cypherquery();
+</script>
+			
+
+<p>
+<div id="messageArea"></div>
+<p>
+
+<svg width="100" height="100">
+  <circle cx="50" cy="50" r="40" stroke="green" stroke-width="4" fill="yellow" />
+</svg>
+<p>
+<div id="outputArea"></div>
+<div id="debug"></div>
+<p>
+</body>
+</html>
