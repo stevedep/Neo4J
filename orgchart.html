@@ -54,7 +54,7 @@ for(var i = 0; i < str_array.length; i++) {
    emailstr += ",'" + str_array[i] + "'"};
    
 }
-			var cypherq = "match (n:P6 {name:'Houten, Frans van'}) MATCH (p:P6) WHERE p.code1 IN ["+emailstr+"] MATCH path = allShortestPaths( (n)-[*]-(p) ) UNWIND nodes(path) AS r match (r)-[x:has_manager*1]->(pp) return distinct r.name as name, pp.name as parent, r.title, r.department, r.code1 ;";
+			var cypherq = "match (n:P6 {name:'Houten, Frans van'}) MATCH (p:P6) WHERE p.code1 IN ["+emailstr+"] MATCH path = allShortestPaths( (n)-[*]-(p) ) UNWIND nodes(path) AS r match (r)-[x:has_manager*1]->(pp) match path2 =(m:P6)-[c:has_manager *0..]->(r) return  r.name as name, pp.name as parent, r.title, r.department + ' (' + count(distinct m) + ')' as department, r.code1, r.id;";
 			// get the data from neo4j
 			$.ajax({
                 url: "http://localhost:7474/db/data/transaction/commit",
@@ -78,7 +78,7 @@ for(var i = 0; i < str_array.length; i++) {
 					var vtest = '';
 					if (str_array.indexOf(v.row[4]) !== -1) { vtest = 'yes' };
 
-					htmlString += '{ "name": "' + v.row[0] + '", "parent" : "' + w2 + '", "title" : "' + v.row[2] + '", "department" : "' + v.row[3] + '", "incl" : "' + vtest + '" }'; //'", "value": 10,"type": "black", "level": "red" }';
+					htmlString += '{ "name": "' + v.row[0] + '", "parent" : "' + w2 + '", "title" : "' + v.row[2] + '", "department" : "' + v.row[3] + '", "code1" : "' + v.row[4] + '", "incl" : "' + vtest + '"  }'; //'", "value": 10,"type": "black", "level": "red" }';
 					teller = teller + 1;
 				});
 				htmlString += ' ]';
@@ -184,7 +184,7 @@ for(var i = 0; i < str_array.length; i++) {
 	  .attr("dy", "3em")
 	  .attr("text-anchor", function(d) { 
 		  return d.children || d._children ? "end" : "start"; })
-	  .html(function(d) { return d.department  })
+	  .html(function(d) { return "<a href='http://localhost/tree.html?Names=" + d.code1 + "'" + " target='_blank'>" + d.department + "</a>"  })
 	  .style("fill-opacity", 1);
 
 	  
